@@ -87,6 +87,7 @@ typings/
 
 # Vite
 .vite/
+index-*.css
 
 # Electron-Forge
 out/
