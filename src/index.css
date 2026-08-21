@@ -2,6 +2,13 @@
 
 :root { color: #eef2fb; background: #10131a; font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif; font-synthesis: none; }
 * { box-sizing: border-box; } body, #root { height: 100vh; margin: 0; overflow: hidden; } button, input, textarea, select { font: inherit; } button { cursor: pointer; } button:disabled { cursor: not-allowed; opacity: .35; }
+/* Keep long editor/preview content usable without the default bright Windows scrollbar. */
+* { scrollbar-width: thin; scrollbar-color: #4b5970 transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { min-height: 36px; border: 2px solid transparent; border-radius: 999px; background: #3c485b; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: #6b7d98; background-clip: padding-box; }
+*::-webkit-scrollbar-corner { background: transparent; }
 .app-shell { display: flex; height: 100vh; overflow: hidden; padding-top: 34px; background: radial-gradient(circle at 85% 0, #1b2740 0, transparent 28rem), #10131a; }
 .sidebar { display: flex; flex: 0 0 238px; flex-direction: column; min-height: 0; overflow: hidden; border-right: 1px solid #242a36; padding: 24px 14px 16px; background: #11151d99; }
 .logo { display: flex; align-items: center; gap: 10px; padding: 0 10px 29px; font-weight: 700; letter-spacing: -.02em; } .brand-mark { display: grid; width: 44px; height: 44px; place-items: center; border-radius: 14px; background: linear-gradient(135deg, #81aaff, #8067e6); color: #fff; font-size: 20px; font-weight: 900; box-shadow: 0 10px 24px #4e6ed044; } .brand-mark.small { width: 28px; height: 28px; border-radius: 9px; font-size: 14px; }
