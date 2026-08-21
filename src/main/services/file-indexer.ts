@@ -1,14 +1,10 @@
 import { lstat, readdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import type { IndexedFile } from '../../shared/types';
+import { isPathWithinRoot } from '../../shared/path-safety';
 import { WorkbenchDatabase } from '../database';
 
 const MAX_FILES_PER_ROOT = 50_000;
-const within = (candidate: string, root: string) => {
-  const relative = path.relative(root, candidate);
-  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
-};
-
 /** Metadata-only scanner. It never reads document content or follows symlinked directories. */
 export class FileIndexer {
   constructor(private readonly database: WorkbenchDatabase) {}
@@ -24,7 +20,7 @@ export class FileIndexer {
       for (const entry of entries) {
         if (files.length >= MAX_FILES_PER_ROOT || entry.isSymbolicLink()) continue;
         const candidate = path.join(directory, entry.name);
-        if (!within(candidate, resolvedRoot)) continue;
+        if (!isPathWithinRoot(resolvedRoot, candidate)) continue;
         if (entry.isDirectory()) await visit(candidate);
         else if (entry.isFile()) {
           try {
@@ -43,7 +39,7 @@ export class FileIndexer {
     if (!item) throw new Error('文件索引不存在。');
     const root = await realpath(item.root_path);
     const candidate = await realpath(item.path);
-    if (!within(candidate, root)) throw new Error('文件已不在授权索引目录中。');
+    if (!isPathWithinRoot(root, candidate)) throw new Error('文件已不在授权索引目录中。');
     return candidate;
   }
 }

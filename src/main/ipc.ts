@@ -6,8 +6,8 @@ import { createDatabaseKey, hasEnvelope, unwrapDatabaseKey } from './security';
 export function registerIpc(services: WorkbenchServices, emit: (channel: 'locked' | 'focus-changed' | 'navigate', value?: string) => void) {
   const requireOpen = () => { if (!services.database.open) throw new Error('工作站已锁定。'); };
   ipcMain.handle('auth:state', () => ({ configured: hasEnvelope(services.root), unlocked: services.database.open }));
-  ipcMain.handle('auth:setup', (_, password: string) => { if (hasEnvelope(services.root)) throw new Error('工作站已经初始化。'); const key = createDatabaseKey(services.root, password); services.database.openWithKey(key); });
-  ipcMain.handle('auth:unlock', (_, password: string) => { const key = unwrapDatabaseKey(services.root, password); services.database.openWithKey(key); });
+  ipcMain.handle('auth:setup', (_, password: string) => { if (hasEnvelope(services.root)) throw new Error('工作站已经初始化。'); const key = createDatabaseKey(services.root, password); services.database.openWithKey(key); void services.rescanFiles().catch((): void => {}); });
+  ipcMain.handle('auth:unlock', (_, password: string) => { const key = unwrapDatabaseKey(services.root, password); services.database.openWithKey(key); void services.rescanFiles().catch((): void => {}); });
   ipcMain.handle('auth:lock', () => { services.database.close(); emit('locked'); });
   ipcMain.handle('tasks:list', (_, search?: string) => { requireOpen(); return services.database.listTasks(search); });
   ipcMain.handle('tasks:save', (_, input: CreateTaskInput & { id?: string }) => { requireOpen(); return services.database.saveTask(input); });

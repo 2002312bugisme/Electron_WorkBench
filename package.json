@@ -9,6 +9,7 @@
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
+    "test": "vitest run",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx ."
   },
@@ -42,7 +43,8 @@
     "eslint-plugin-import": "^2.32.0",
     "tailwindcss": "^4.1.14",
     "typescript": "^5.7.3",
-    "vite": "^5.4.21"
+    "vite": "^5.4.21",
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.2",

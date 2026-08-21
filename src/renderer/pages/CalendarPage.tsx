@@ -1,0 +1,13 @@
+import { useEffect, useMemo, useState } from 'react';
+import type { CalendarData } from '../../shared/types';
+import { EmptyState } from '../components/EmptyState';
+import { localDay, monthKey } from '../lib/date';
+
+export function CalendarPage() {
+  const [cursor, setCursor] = useState(() => new Date()); const [data, setData] = useState<CalendarData | null>(null); const month = monthKey(cursor);
+  const refresh = () => window.workbench.calendar.get(month).then(setData);
+  useEffect(() => { void refresh(); }, [month]);
+  const cells = useMemo(() => { const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1); const offset = (first.getDay() + 6) % 7; const count = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate(); return Array.from({ length: offset + count }, (_, index) => index < offset ? null : new Date(cursor.getFullYear(), cursor.getMonth(), index - offset + 1)); }, [cursor]);
+  const today = localDay();
+  return <div className="page calendar-page"><div className="calendar-toolbar"><button className="quiet" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}>←</button><h3>{new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' }).format(cursor)}</h3><button className="quiet" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))}>→</button><button className="quiet" onClick={() => setCursor(new Date())}>今天</button></div>{data ? <><div className="calendar-weekdays">{['一', '二', '三', '四', '五', '六', '日'].map((weekday) => <span key={weekday}>{weekday}</span>)}</div><div className="month-grid">{cells.map((date, index) => { if (!date) return <div className="calendar-cell blank" key={`blank-${index}`} />; const day = localDay(date); const tasks = data.tasks.filter((task) => task.dueAt && localDay(task.dueAt) === day); const done = data.habitDays.filter((entry) => entry.day === day).length; return <article className={`calendar-cell ${day === today ? 'today' : ''}`} key={day}><strong>{date.getDate()}</strong>{tasks.slice(0, 3).map((task) => <span className="calendar-task" key={task.id} title={task.title}>{task.title}</span>)}{data.habits.length > 0 && <small className="habit-count">习惯 {done}/{data.habits.length}</small>}</article>; })}</div><section className="today-agenda"><h3>今天议程</h3>{data.tasks.filter((task) => task.dueAt && localDay(task.dueAt) === today).length ? data.tasks.filter((task) => task.dueAt && localDay(task.dueAt) === today).map((task) => <p key={task.id}>• {task.title}</p>) : <EmptyState text="今天没有安排截止任务。" />}</section></> : <div className="loading">正在加载日历…</div>}</div>;
+}

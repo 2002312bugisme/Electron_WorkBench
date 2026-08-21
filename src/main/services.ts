@@ -49,7 +49,7 @@ export class WorkbenchServices {
     if (root) await this.files.scan(root.id, root.path);
     return root;
   }
-  async rescanFiles() { await this.files.rescanAll(); }
+  async rescanFiles(): Promise<void> { await this.files.rescanAll(); }
   async openIndexedFile(fileId: string) {
     const file = await this.files.safeOpen(fileId);
     const result = await shell.openPath(file);

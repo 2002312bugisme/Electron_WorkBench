@@ -31,6 +31,7 @@ let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let quitting = false;
 let lastHydrationNotice = 0;
+let indexing = false;
 const services = new WorkbenchServices();
 function send(channel: 'locked' | 'focus-changed' | 'navigate', value?: string) { mainWindow?.webContents.send(`event:${channel}`, value); }
 function showWindow(route = '/') { if (!mainWindow) return; mainWindow.show(); mainWindow.focus(); if (route !== '/') send('navigate', route); }
@@ -70,6 +71,7 @@ app.whenReady().then(() => {
   registerIpc(services, send); createWindow(); createTray(); globalShortcut.register('Alt+Space', () => mainWindow?.isVisible() ? mainWindow.hide() : showWindow());
   powerMonitor.on('lock-screen', () => { if (services.database.open) { services.database.close(); send('locked'); } });
   setInterval(checkLocalReminders, 60_000);
+  setInterval((): void => { if (services.database.open && !indexing) { indexing = true; void services.rescanFiles().catch((): void => {}).finally((): void => { indexing = false; }); } }, 15 * 60_000);
   setInterval(() => { if (!services.database.open) return; const active = services.database.activeFocus(); if (!active || active.pausedAt) return; const elapsed = (Date.now() - new Date(active.startedAt).getTime()) / 1000 - active.pausedSeconds; if (elapsed >= active.plannedSeconds) { services.database.finishFocus(); new Notification({ title: active.kind === 'focus' ? '专注完成' : '休息结束', body: active.kind === 'focus' ? '做得好，休息一下吧。' : '准备开始下一轮专注。' }).show(); send('focus-changed'); } }, 1000);
 });
 app.on('window-all-closed', () => { /* tray keeps the app available on Windows */ });
