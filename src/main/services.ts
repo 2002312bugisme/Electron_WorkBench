@@ -3,13 +3,13 @@ import { cp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { createWriteStream, existsSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { WorkbenchDatabase } from './database';
 
-import * as archiverModule from 'archiver';
-import unzipper from 'unzipper';
-
 interface ArchiveWriter { on(event: string, listener: (error: Error) => void): ArchiveWriter; pipe(target: NodeJS.WritableStream): ArchiveWriter; file(source: string, options: { name: string }): ArchiveWriter; directory(source: string, destination: string): ArchiveWriter; finalize(): Promise<void> }
-const createArchive = archiverModule as unknown as (format: 'zip', options: { zlib: { level: number } }) => ArchiveWriter;
+type ArchiveFactory = (format: 'zip', options: { zlib: { level: number } }) => ArchiveWriter;
+type Unzipper = { Open: { file(source: string): Promise<{ files: Array<{ path: string }>; extract(options: { path: string }): Promise<void> }> } };
+const runtimeRequire = createRequire(__filename);
 
 export class WorkbenchServices {
   readonly root = path.join(app.getPath('appData'), 'Zzz Workstation');
@@ -35,6 +35,7 @@ export class WorkbenchServices {
     const suggestion = `zzz-workbench-backup-${new Date().toISOString().slice(0, 10)}.zip`;
     const result = await dialog.showSaveDialog({ title: '导出加密备份', defaultPath: suggestion, filters: [{ name: '压缩备份', extensions: ['zip'] }] });
     if (result.canceled || !result.filePath) return null;
+    const createArchive = runtimeRequire('archiver') as ArchiveFactory;
     await new Promise<void>((resolve, reject) => {
       const output = createWriteStream(result.filePath);
       const archive = createArchive('zip', { zlib: { level: 9 } });
@@ -49,7 +50,7 @@ export class WorkbenchServices {
   async restoreBackup(): Promise<void> {
     const result = await dialog.showOpenDialog({ title: '选择工作站备份', properties: ['openFile'], filters: [{ name: '压缩备份', extensions: ['zip'] }] });
     if (result.canceled || !result.filePaths[0]) return;
-    const archivePath = result.filePaths[0]; const directory = await unzipper.Open.file(archivePath);
+    const archivePath = result.filePaths[0]; const unzipper = runtimeRequire('unzipper') as Unzipper; const directory = await unzipper.Open.file(archivePath);
     if (!directory.files.some((f: any) => f.path === 'data.db') || !directory.files.some((f: any) => f.path === 'key-envelope.json')) throw new Error('该文件不是有效的工作站备份。');
     if (directory.files.some((f: any) => f.path.includes('..') || path.isAbsolute(f.path))) throw new Error('备份包含不安全的文件路径。');
     const staging = path.join(app.getPath('temp'), `zzz-workbench-restore-${randomUUID()}`);
