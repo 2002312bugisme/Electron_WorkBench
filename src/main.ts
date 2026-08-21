@@ -35,7 +35,9 @@ function showWindow(route = '/') { if (!mainWindow) return; mainWindow.show(); m
 function openExternal(raw: string) { try { const url = new URL(raw); if (url.protocol === 'https:') void shell.openExternal(url.toString()); } catch { /* ignore invalid URLs */ } }
 
 function createTray() {
-  tray = new Tray(nativeImage.createEmpty()); tray.setToolTip('Zzz 的工作站');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#6d92e7"/><path fill="#fff" d="M8 9h16v3L13 21h11v3H8v-3l11-9H8z"/></svg>`;
+  const trayIcon = nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`);
+  tray = new Tray(trayIcon); tray.setToolTip('Zzz 的工作站');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '打开工作站', click: () => showWindow() }, { label: '新建任务', click: () => showWindow('/tasks?new=1') }, { label: '新建笔记', click: () => showWindow('/notes?new=1') }, { type: 'separator' },
     { label: '开始 / 暂停番茄钟', click: () => { if (!services.database.open) return showWindow(); const active = services.database.activeFocus(); if (!active) services.database.startFocus(null); else services.database.pauseFocus(); send('focus-changed'); } }, { type: 'separator' },
@@ -44,7 +46,7 @@ function createTray() {
 }
 
 function createWindow() {
-  mainWindow = new BrowserWindow({ width: 1440, height: 900, minWidth: 1040, minHeight: 680, show: false, backgroundColor: '#10131a', webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true } });
+  mainWindow = new BrowserWindow({ width: 1440, height: 900, minWidth: 1040, minHeight: 680, show: false, backgroundColor: '#10131a', titleBarStyle: 'hidden', titleBarOverlay: { color: '#10131a', symbolColor: '#dbe6fb', height: 34 }, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true } });
   mainWindow.once('ready-to-show', () => mainWindow?.show());
   mainWindow.on('close', (event) => { if (!quitting) { event.preventDefault(); mainWindow?.hide(); } });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => { openExternal(url); return { action: 'deny' }; });
