@@ -28,7 +28,7 @@ export interface Dashboard {
   todayTasks: Task[]; overdueTasks: Task[]; recentNotes: Note[]; favoritePrompts: PromptTemplate[];
   weekFocusSeconds: number; activeFocus: FocusSession | null;
 }
-export interface WeeklyReport { markdown: string; completed: Task[]; pending: Task[]; focusSeconds: number; projectStats: Array<{ name: string; count: number }> }
+export interface WeeklyReport { markdown: string; completed: Task[]; pending: Task[]; focusSeconds: number; projectStats: Array<{ name: string; count: number }>; tagStats: Array<{ name: string; count: number }> }
 export interface Habit { id: string; name: string; color: string; targetDays: number; archived: boolean; createdAt: string }
 export interface HabitDay { habitId: string; day: string; completed: boolean }
 export interface HydrationSettings { dailyGoal: number; reminderMinutes: number }
