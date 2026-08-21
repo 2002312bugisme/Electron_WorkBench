@@ -1,10 +1,11 @@
-import { app, clipboard, dialog } from 'electron';
-import { cp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { app, clipboard, dialog, shell } from 'electron';
+import { cp, mkdir, rm, unlink, writeFile } from 'node:fs/promises';
 import { createWriteStream, existsSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { WorkbenchDatabase } from './database';
+import { FileIndexer } from './services/file-indexer';
 
 interface ArchiveWriter { on(event: string, listener: (error: Error) => void): ArchiveWriter; pipe(target: NodeJS.WritableStream): ArchiveWriter; file(source: string, options: { name: string }): ArchiveWriter; directory(source: string, destination: string): ArchiveWriter; finalize(): Promise<void> }
 type ArchiveFactory = (format: 'zip', options: { zlib: { level: number } }) => ArchiveWriter;
@@ -15,6 +16,7 @@ export class WorkbenchServices {
   readonly root = path.join(app.getPath('appData'), 'Zzz Workstation');
   readonly attachments = path.join(this.root, 'attachments');
   readonly database = new WorkbenchDatabase(this.root);
+  readonly files = new FileIndexer(this.database);
   async addAttachment(noteId: string): Promise<string | null> {
     const result = await dialog.showOpenDialog({ title: '选择笔记附件', properties: ['openFile'] });
     const source = result.filePaths[0]; if (result.canceled || !source) return null;
@@ -29,6 +31,29 @@ export class WorkbenchServices {
     if (!item) return null;
     const candidate = path.resolve(this.attachments, item.stored_name);
     return candidate.startsWith(path.resolve(this.attachments) + path.sep) && existsSync(candidate) ? candidate : null;
+  }
+  async openAttachment(attachmentId: string) {
+    const file = this.attachmentPath(attachmentId);
+    if (!file) throw new Error('附件不存在或已被移除。');
+    const result = await shell.openPath(file);
+    if (result) throw new Error(result);
+  }
+  async removeNote(noteId: string) {
+    const attachments = this.database.deleteNote(noteId);
+    await Promise.all(attachments.map((attachment: { stored_name: string }) => unlink(path.join(this.attachments, attachment.stored_name)).catch((): undefined => undefined)));
+  }
+  async addFileRoot() {
+    const result = await dialog.showOpenDialog({ title: '选择需要索引的文件夹', properties: ['openDirectory'] });
+    if (result.canceled || !result.filePaths[0]) return null;
+    const root = this.database.addFileRoot(path.resolve(result.filePaths[0]), path.basename(result.filePaths[0]));
+    if (root) await this.files.scan(root.id, root.path);
+    return root;
+  }
+  async rescanFiles() { await this.files.rescanAll(); }
+  async openIndexedFile(fileId: string) {
+    const file = await this.files.safeOpen(fileId);
+    const result = await shell.openPath(file);
+    if (result) throw new Error(result);
   }
   async exportBackup(): Promise<string | null> {
     this.database.checkpoint();

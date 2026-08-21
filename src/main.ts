@@ -5,6 +5,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { WorkbenchServices } from './main/services';
 import { registerIpc } from './main/ipc';
+import type { Task } from './shared/types';
 
 app.setName('Zzz Workstation');
 app.setPath('userData', path.join(app.getPath('appData'), 'Zzz Workstation'));
@@ -29,10 +30,19 @@ if (squirrelStartup()) app.quit();
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let quitting = false;
+let lastHydrationNotice = 0;
 const services = new WorkbenchServices();
 function send(channel: 'locked' | 'focus-changed' | 'navigate', value?: string) { mainWindow?.webContents.send(`event:${channel}`, value); }
 function showWindow(route = '/') { if (!mainWindow) return; mainWindow.show(); mainWindow.focus(); if (route !== '/') send('navigate', route); }
 function openExternal(raw: string) { try { const url = new URL(raw); if (url.protocol === 'https:') void shell.openExternal(url.toString()); } catch { /* ignore invalid URLs */ } }
+function checkLocalReminders() {
+  if (!services.database.open) return;
+  services.database.dueReminders().forEach((task: Task) => { new Notification({ title: '任务提醒', body: task.title }).show(); services.database.markReminded(task.id); });
+  const hydration = services.database.hydrationDay(); const settings = services.database.hydrationSettings();
+  if (hydration.amount < hydration.goal && Date.now() - lastHydrationNotice >= settings.reminderMinutes * 60_000) {
+    new Notification({ title: '喝水提醒', body: `今天已记录 ${hydration.amount}/${hydration.goal} 杯，喝口水吧。` }).show(); lastHydrationNotice = Date.now();
+  }
+}
 
 function createTray() {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#6d92e7"/><path fill="#fff" d="M8 9h16v3L13 21h11v3H8v-3l11-9H8z"/></svg>`;
@@ -59,6 +69,7 @@ app.whenReady().then(() => {
   protocol.handle('attachment', (request) => { const attachmentId = new URL(request.url).hostname; const file = services.attachmentPath(attachmentId); return file ? net.fetch(pathToFileURL(file).toString()) : new Response('Not found', { status: 404 }); });
   registerIpc(services, send); createWindow(); createTray(); globalShortcut.register('Alt+Space', () => mainWindow?.isVisible() ? mainWindow.hide() : showWindow());
   powerMonitor.on('lock-screen', () => { if (services.database.open) { services.database.close(); send('locked'); } });
+  setInterval(checkLocalReminders, 60_000);
   setInterval(() => { if (!services.database.open) return; const active = services.database.activeFocus(); if (!active || active.pausedAt) return; const elapsed = (Date.now() - new Date(active.startedAt).getTime()) / 1000 - active.pausedSeconds; if (elapsed >= active.plannedSeconds) { services.database.finishFocus(); new Notification({ title: active.kind === 'focus' ? '专注完成' : '休息结束', body: active.kind === 'focus' ? '做得好，休息一下吧。' : '准备开始下一轮专注。' }).show(); send('focus-changed'); } }, 1000);
 });
 app.on('window-all-closed', () => { /* tray keeps the app available on Windows */ });
