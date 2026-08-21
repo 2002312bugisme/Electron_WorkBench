@@ -1,0 +1,39 @@
+import { BrowserWindow, Notification, clipboard, dialog, ipcMain, shell } from 'electron';
+import type { CreateNoteInput, CreatePromptInput, CreateTaskInput, TaskStatus } from '../shared/types';
+import { WorkbenchServices } from './services';
+import { createDatabaseKey, hasEnvelope, unwrapDatabaseKey } from './security';
+
+export function registerIpc(services: WorkbenchServices, emit: (channel: 'locked' | 'focus-changed' | 'navigate', value?: string) => void) {
+  const requireOpen = () => { if (!services.database.open) throw new Error('工作站已锁定。'); };
+  ipcMain.handle('auth:state', () => ({ configured: hasEnvelope(services.root), unlocked: services.database.open }));
+  ipcMain.handle('auth:setup', (_, password: string) => { if (hasEnvelope(services.root)) throw new Error('工作站已经初始化。'); const key = createDatabaseKey(services.root, password); services.database.openWithKey(key); });
+  ipcMain.handle('auth:unlock', (_, password: string) => { const key = unwrapDatabaseKey(services.root, password); services.database.openWithKey(key); });
+  ipcMain.handle('auth:lock', () => { services.database.close(); emit('locked'); });
+  ipcMain.handle('tasks:list', (_, search?: string) => { requireOpen(); return services.database.listTasks(search); });
+  ipcMain.handle('tasks:save', (_, input: CreateTaskInput & { id?: string }) => { requireOpen(); return services.database.saveTask(input); });
+  ipcMain.handle('tasks:remove', (_, taskId: string) => { requireOpen(); services.database.deleteTask(taskId); });
+  ipcMain.handle('tasks:complete', (_, taskId: string) => { requireOpen(); return services.database.completeTask(taskId); });
+  ipcMain.handle('tasks:move', (_, taskId: string, status: TaskStatus) => { requireOpen(); return services.database.moveTask(taskId, status); });
+  ipcMain.handle('notes:list', (_, search?: string) => { requireOpen(); return services.database.listNotes(search); });
+  ipcMain.handle('notes:get', (_, noteId: string) => { requireOpen(); return services.database.getNote(noteId); });
+  ipcMain.handle('notes:save', (_, input: CreateNoteInput & { id?: string }) => { requireOpen(); return services.database.saveNote(input); });
+  ipcMain.handle('notes:remove', (_, noteId: string) => { requireOpen(); services.database.deleteNote(noteId); });
+  ipcMain.handle('notes:attach', async (_, noteId: string) => { requireOpen(); return services.addAttachment(noteId); });
+  ipcMain.handle('prompts:list', (_, search?: string) => { requireOpen(); return services.database.listPrompts(search); });
+  ipcMain.handle('prompts:categories', () => { requireOpen(); return services.database.categories(); });
+  ipcMain.handle('prompts:save', (_, input: CreatePromptInput & { id?: string }) => { requireOpen(); return services.database.savePrompt(input); });
+  ipcMain.handle('prompts:remove', (_, promptId: string) => { requireOpen(); services.database.deletePrompt(promptId); });
+  ipcMain.handle('prompts:use', (_, promptId: string, values: Record<string, string>) => { requireOpen(); const text = services.database.usePrompt(promptId, values); clipboard.writeText(text); return text; });
+  ipcMain.handle('focus:active', () => { requireOpen(); return services.database.activeFocus(); });
+  ipcMain.handle('focus:start', (_, taskId?: string | null, kind?: 'focus' | 'break') => { requireOpen(); const value = services.database.startFocus(taskId || null, kind); emit('focus-changed'); return value; });
+  ipcMain.handle('focus:pause', () => { requireOpen(); const value = services.database.pauseFocus(); emit('focus-changed'); return value; });
+  ipcMain.handle('focus:finish', (_, abandoned?: boolean) => { requireOpen(); const value = services.database.finishFocus(abandoned); if (value && !abandoned) new Notification({ title: value.kind === 'focus' ? '专注完成' : '休息结束', body: value.kind === 'focus' ? '做得好，休息一下吧。' : '准备开始下一轮专注。' }).show(); emit('focus-changed'); return value; });
+  ipcMain.handle('dashboard:get', () => { requireOpen(); return services.database.dashboard(); });
+  ipcMain.handle('reports:weekly', () => { requireOpen(); return services.database.weeklyReport(); });
+  ipcMain.handle('reports:save-weekly', () => { requireOpen(); return services.saveReport(services.database.weeklyReport().markdown); });
+  ipcMain.handle('reports:copy', (_, text: string) => services.copy(text));
+  ipcMain.handle('backup:export', () => { requireOpen(); return services.exportBackup(); });
+  ipcMain.handle('backup:restore', async () => { requireOpen(); const owner = BrowserWindow.getFocusedWindow(); const choice = await dialog.showMessageBox(owner || undefined, { type: 'warning', buttons: ['取消', '继续恢复'], defaultId: 0, cancelId: 0, message: '恢复备份会替换当前所有工作站数据。', detail: '恢复后应用将重启，并要求输入该备份原有的主密码。' }); if (choice.response === 1) await services.restoreBackup(); });
+  ipcMain.handle('shell:open-external', (_, raw: string) => { try { const url = new URL(raw); if (url.protocol === 'https:') return shell.openExternal(url.toString()); } catch { /* invalid addresses are ignored */ } });
+  ipcMain.handle('shell:quick-create', (_, type: 'task' | 'note') => emit('navigate', `/${type}s?new=1`));
+}
