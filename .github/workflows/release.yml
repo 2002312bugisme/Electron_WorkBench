@@ -16,6 +16,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Configure HTTPS access for Git dependencies
+        shell: pwsh
+        run: git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
       - run: npm ci
       - run: npm test
       - run: npm audit --omit=dev --audit-level=critical
