@@ -1,7 +1,7 @@
 {
   "name": "zzz-workstation",
   "productName": "Zzz Workstation",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Zzz 的本地加密个人工作站",
   "main": ".vite/build/main.js",
   "private": true,

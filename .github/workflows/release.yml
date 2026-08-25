@@ -19,7 +19,9 @@ jobs:
       - name: Configure HTTPS access for Git dependencies
         shell: pwsh
         run: git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
-      - run: npm ci
+      - run: npm ci --ignore-scripts
+      - name: Rebuild encrypted database module for Electron
+        run: npx --no-install electron-rebuild -f -w better-sqlite3-multiple-ciphers
       - run: npm test
       - run: npm audit --omit=dev --audit-level=critical
       - run: npm run make
