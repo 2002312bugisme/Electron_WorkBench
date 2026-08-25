@@ -7,8 +7,8 @@ export function registerIpc(services: WorkbenchServices, emit: (channel: 'locked
   const requireOpen = () => { if (!services.database.open) throw new Error('工作站已锁定。'); };
   ipcMain.handle('app:info', () => ({ name: app.getName(), version: app.getVersion(), dataDirectory: services.root }));
   ipcMain.handle('auth:state', () => ({ configured: hasEnvelope(services.root), unlocked: services.database.open }));
-  ipcMain.handle('auth:setup', (_, password: string) => { if (hasEnvelope(services.root)) throw new Error('工作站已经初始化。'); const key = createDatabaseKey(services.root, password); services.database.openWithKey(key); void services.rescanFiles().catch((): void => {}); });
-  ipcMain.handle('auth:unlock', (_, password: string) => { const key = unwrapDatabaseKey(services.root, password); services.database.openWithKey(key); void services.rescanFiles().catch((): void => {}); });
+  ipcMain.handle('auth:setup', (_, password: string) => { if (hasEnvelope(services.root)) throw new Error('工作站已经初始化。'); const key = createDatabaseKey(services.root, password); services.database.openWithKey(key); void services.rescanFiles().catch((): void => { void 0; }); void services.maybeSendWeeklyMail().catch((): void => { void 0; }); void services.maybeAutoRemoteBackup().catch((): void => { void 0; }); });
+  ipcMain.handle('auth:unlock', (_, password: string) => { const key = unwrapDatabaseKey(services.root, password); services.database.openWithKey(key); void services.rescanFiles().catch((): void => { void 0; }); void services.maybeSendWeeklyMail().catch((): void => { void 0; }); void services.maybeAutoRemoteBackup().catch((): void => { void 0; }); });
   ipcMain.handle('auth:lock', () => { services.database.close(); emit('locked'); });
   ipcMain.handle('tasks:list', (_, search?: string) => { requireOpen(); return services.database.listTasks(search); });
   ipcMain.handle('tasks:save', (_, input: CreateTaskInput & { id?: string }) => { requireOpen(); return services.database.saveTask(input); });
@@ -58,6 +58,27 @@ export function registerIpc(services: WorkbenchServices, emit: (channel: 'locked
   ipcMain.handle('files:search', (_, query: string) => { requireOpen(); return services.database.searchFiles(query); });
   ipcMain.handle('files:open', (_, fileId: string) => { requireOpen(); return services.openIndexedFile(fileId); });
   ipcMain.handle('notes:open-attachment', (_, attachmentId: string) => { requireOpen(); return services.openAttachment(attachmentId); });
+  ipcMain.handle('rss:feeds', () => { requireOpen(); return services.database.listRssFeeds(); });
+  ipcMain.handle('rss:save', (_, input) => { requireOpen(); return services.database.saveRssFeed(input); });
+  ipcMain.handle('rss:remove', (_, feedId: string) => { requireOpen(); services.database.deleteRssFeed(feedId); });
+  ipcMain.handle('rss:refresh', async (_, feedId?: string) => { requireOpen(); await services.refreshRss(feedId); });
+  ipcMain.handle('rss:entries', (_, input) => { requireOpen(); return services.database.listRssEntries(input); });
+  ipcMain.handle('rss:mark-read', (_, entryId: string, read: boolean) => { requireOpen(); services.database.markRssEntryRead(entryId, read); });
+  ipcMain.handle('rss:toggle-star', (_, entryId: string) => { requireOpen(); services.database.toggleRssEntryStar(entryId); });
+  ipcMain.handle('mail:settings', () => { requireOpen(); return services.mailSettings(); });
+  ipcMain.handle('mail:save-settings', (_, input) => { requireOpen(); return services.saveMailSettings(input); });
+  ipcMain.handle('mail:test', async () => { requireOpen(); await services.sendWeeklyMail(false); });
+  ipcMain.handle('mail:send-weekly', async () => { requireOpen(); await services.sendWeeklyMail(false); });
+  ipcMain.handle('mail:clear', async () => { requireOpen(); await services.clearMailSettings(); });
+  ipcMain.handle('remote-backup:config', () => { requireOpen(); return services.remoteBackupConfig(); });
+  ipcMain.handle('remote-backup:save-config', (_, input) => { requireOpen(); return services.saveRemoteBackupConfig(input); });
+  ipcMain.handle('remote-backup:test', async () => { requireOpen(); await services.testRemoteBackup(); });
+  ipcMain.handle('remote-backup:backup', (_, automatic?: boolean) => { requireOpen(); return services.backupRemote(Boolean(automatic)); });
+  ipcMain.handle('remote-backup:list', (_, search?: string) => { requireOpen(); return services.listRemoteBackups(search); });
+  ipcMain.handle('remote-backup:restore', async (_, key: string) => { requireOpen(); const choice = await dialog.showMessageBox(BrowserWindow.getFocusedWindow() || undefined, { type: 'warning', buttons: ['取消', '下载并恢复'], defaultId: 0, cancelId: 0, message: '远程恢复会替换当前所有工作站数据。', detail: '恢复后应用将重启，并要求输入备份原有的主密码。' }); if (choice.response === 1) await services.restoreRemoteBackup(key); });
+  ipcMain.handle('remote-backup:clear', async () => { requireOpen(); await services.clearRemoteBackupConfig(); });
+  ipcMain.handle('updates:check', () => services.updates.check(app.getVersion()));
+  ipcMain.handle('updates:download', () => services.downloadUpdate());
   ipcMain.handle('shell:open-external', (_, raw: string) => { try { const url = new URL(raw); if (url.protocol === 'https:') return shell.openExternal(url.toString()); } catch { /* invalid addresses are ignored */ } });
   ipcMain.handle('shell:quick-create', (_, type: 'task' | 'note') => emit('navigate', `/${type}s?new=1`));
 }

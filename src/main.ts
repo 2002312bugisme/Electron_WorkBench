@@ -44,6 +44,13 @@ function checkLocalReminders() {
     new Notification({ title: '喝水提醒', body: `今天已记录 ${hydration.amount}/${hydration.goal} 杯，喝口水吧。` }).show(); lastHydrationNotice = Date.now();
   }
 }
+async function checkExternalIntegrations() {
+  if (!services.database.open) return;
+  try { if (await services.maybeSendWeeklyMail()) new Notification({ title: '周报已发送', body: '本周工作周报已发送到已验证邮箱。' }).show(); } catch { /* retain local work when the network or SMTP is unavailable */ }
+  try { if (await services.maybeAutoRemoteBackup()) new Notification({ title: '云端备份完成', body: '已上传今日加密备份到 OSS。' }).show(); } catch { /* configuration and network errors stay recoverable in settings */ }
+  const stale = services.database.listRssFeeds().some((feed) => feed.enabled && (!feed.lastFetchedAt || Date.now() - new Date(feed.lastFetchedAt).getTime() > 30 * 60_000));
+  if (stale) { try { await services.refreshRss(); } catch { void 0; } }
+}
 
 function createTray() {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#6d92e7"/><path fill="#fff" d="M8 9h16v3L13 21h11v3H8v-3l11-9H8z"/></svg>`;
@@ -71,6 +78,7 @@ app.whenReady().then(() => {
   registerIpc(services, send); createWindow(); createTray(); globalShortcut.register('Alt+Space', () => mainWindow?.isVisible() ? mainWindow.hide() : showWindow());
   powerMonitor.on('lock-screen', () => { if (services.database.open) { services.database.close(); send('locked'); } });
   setInterval(checkLocalReminders, 60_000);
+  setInterval(() => { void checkExternalIntegrations(); }, 15 * 60_000);
   setInterval((): void => { if (services.database.open && !indexing) { indexing = true; void services.rescanFiles().catch((): void => {}).finally((): void => { indexing = false; }); } }, 15 * 60_000);
   setInterval(() => { if (!services.database.open) return; const active = services.database.activeFocus(); if (!active || active.pausedAt) return; const elapsed = (Date.now() - new Date(active.startedAt).getTime()) / 1000 - active.pausedSeconds; if (elapsed >= active.plannedSeconds) { services.database.finishFocus(); new Notification({ title: active.kind === 'focus' ? '专注完成' : '休息结束', body: active.kind === 'focus' ? '做得好，休息一下吧。' : '准备开始下一轮专注。' }).show(); send('focus-changed'); } }, 1000);
 });

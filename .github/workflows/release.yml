@@ -1,0 +1,42 @@
+name: Windows release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm audit --omit=dev --audit-level=critical
+      - run: npm run make
+      - name: Prepare verified release files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out\release | Out-Null
+          $deadline = (Get-Date).AddMinutes(3)
+          do {
+            $setup = Get-ChildItem out\make\squirrel.windows\x64 -Filter '*Setup.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+            $squirrel = Get-Process Squirrel -ErrorAction SilentlyContinue
+            if ($setup -and -not $squirrel) { break }
+            Start-Sleep -Seconds 2
+          } while ((Get-Date) -lt $deadline)
+          if (-not $setup) { throw 'Windows setup artifact was not created.' }
+          Copy-Item $setup.FullName out\release\$setup.Name
+          $hash = (Get-FileHash out\release\$setup.Name -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path out\release\$($setup.Name).sha256 -Value "$hash  $($setup.Name)" -NoNewline
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" out\release\* --generate-notes

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import SqlCipher from 'better-sqlite3-multiple-ciphers';
-import type { CalendarData, CreateNoteInput, CreatePromptInput, CreateTaskInput, Dashboard, FileRoot, FocusSession, GtdStage, Habit, HabitDay, HydrationDay, HydrationSettings, IndexedFile, Note, Project, PromptCategory, PromptTemplate, Tag, Task, TaskStatus, WeeklyReport } from '../shared/types';
+import type { CalendarData, CreateNoteInput, CreatePromptInput, CreateTaskInput, Dashboard, FileRoot, FocusSession, GtdStage, Habit, HabitDay, HydrationDay, HydrationSettings, IndexedFile, Note, Project, PromptCategory, PromptTemplate, RssEntry, RssFeed, Tag, Task, TaskStatus, WeeklyReport } from '../shared/types';
 
 type Db = any;
 const now = () => new Date().toISOString();
@@ -40,6 +40,8 @@ export class WorkbenchDatabase {
       CREATE TABLE IF NOT EXISTS hydration_logs (id TEXT PRIMARY KEY, day TEXT NOT NULL, amount INTEGER NOT NULL, created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS file_roots (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, last_indexed_at TEXT, created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS indexed_files (id TEXT PRIMARY KEY, root_id TEXT NOT NULL REFERENCES file_roots(id) ON DELETE CASCADE, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, extension TEXT NOT NULL, size INTEGER NOT NULL, modified_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS rss_feeds (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '', url TEXT NOT NULL UNIQUE, group_name TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1, last_fetched_at TEXT, last_error TEXT, created_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS rss_entries (id TEXT PRIMARY KEY, feed_id TEXT NOT NULL REFERENCES rss_feeds(id) ON DELETE CASCADE, guid TEXT NOT NULL, title TEXT NOT NULL, link TEXT NOT NULL DEFAULT '', summary TEXT NOT NULL DEFAULT '', published_at TEXT, read INTEGER NOT NULL DEFAULT 0, starred INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, UNIQUE(feed_id, guid));
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
     for (const statement of ["ALTER TABLE tasks ADD COLUMN gtd_stage TEXT NOT NULL DEFAULT 'inbox'", 'ALTER TABLE tasks ADD COLUMN important INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE tasks ADD COLUMN urgent INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE tasks ADD COLUMN reminded_at TEXT']) {
       try { db.exec(statement); } catch { /* existing 1.0 columns */ }
@@ -117,6 +119,31 @@ export class WorkbenchDatabase {
   replaceIndexedFiles(rootId: string, files: Array<Omit<IndexedFile, 'id' | 'rootId'>>) { const transaction = this.d.transaction(() => { this.d.prepare('DELETE FROM indexed_files WHERE root_id=?').run(rootId); const insert = this.d.prepare('INSERT INTO indexed_files VALUES (?, ?, ?, ?, ?, ?, ?)'); files.forEach((file) => insert.run(id(), rootId, file.path, file.name, file.extension, file.size, file.modifiedAt)); this.d.prepare('UPDATE file_roots SET last_indexed_at=? WHERE id=?').run(now(), rootId); }); transaction(); }
   searchFiles(query: string): IndexedFile[] { const value = `%${query.trim()}%`; if (!query.trim()) return []; return this.d.prepare('SELECT indexed_files.* FROM indexed_files JOIN file_roots ON file_roots.id=indexed_files.root_id WHERE file_roots.enabled=1 AND (indexed_files.name LIKE ? OR indexed_files.path LIKE ?) ORDER BY indexed_files.modified_at DESC LIMIT 200').all(value, value).map((row: any) => ({ id: row.id, rootId: row.root_id, path: row.path, name: row.name, extension: row.extension, size: row.size, modifiedAt: row.modified_at })); }
   indexedFile(fileId: string) { return this.d.prepare('SELECT indexed_files.*, file_roots.path AS root_path FROM indexed_files JOIN file_roots ON file_roots.id=indexed_files.root_id WHERE indexed_files.id=?').get(fileId); }
+
+  private rssFeed(row: any): RssFeed { return { id: row.id, title: row.title, url: row.url, groupName: row.group_name, enabled: Boolean(row.enabled), lastFetchedAt: row.last_fetched_at, lastError: row.last_error, createdAt: row.created_at }; }
+  private rssEntry(row: any): RssEntry { return { id: row.id, feedId: row.feed_id, feedTitle: row.feed_title, guid: row.guid, title: row.title, link: row.link, summary: row.summary, publishedAt: row.published_at, read: Boolean(row.read), starred: Boolean(row.starred), createdAt: row.created_at }; }
+  listRssFeeds(): RssFeed[] { return this.d.prepare('SELECT * FROM rss_feeds ORDER BY group_name, title, created_at').all().map((row: any) => this.rssFeed(row)); }
+  getRssFeed(feedId: string): RssFeed | null { const row = this.d.prepare('SELECT * FROM rss_feeds WHERE id=?').get(feedId); return row ? this.rssFeed(row) : null; }
+  saveRssFeed(input: { id?: string; url: string; groupName?: string; enabled?: boolean }): RssFeed {
+    const feedId = input.id || id(); const url = input.url.trim(); if (!url) throw new Error('订阅地址不能为空。');
+    if (input.id) this.d.prepare('UPDATE rss_feeds SET url=?, group_name=?, enabled=? WHERE id=?').run(url, input.groupName?.trim() || '', input.enabled === false ? 0 : 1, feedId);
+    else this.d.prepare('INSERT INTO rss_feeds (id,title,url,group_name,enabled,last_fetched_at,last_error,created_at) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?)').run(feedId, url, url, input.groupName?.trim() || '', input.enabled === false ? 0 : 1, now());
+    return this.getRssFeed(feedId)!;
+  }
+  deleteRssFeed(feedId: string) { this.d.prepare('DELETE FROM rss_feeds WHERE id=?').run(feedId); }
+  markRssFeedFetched(feedId: string, title: string, error: string | null) { this.d.prepare('UPDATE rss_feeds SET title=?, last_fetched_at=?, last_error=? WHERE id=?').run(title.trim() || '未命名订阅', now(), error, feedId); }
+  upsertRssEntries(feedId: string, entries: Array<Pick<RssEntry, 'guid' | 'title' | 'link' | 'summary' | 'publishedAt'>>) {
+    const insert = this.d.prepare('INSERT INTO rss_entries (id,feed_id,guid,title,link,summary,published_at,read,starred,created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?) ON CONFLICT(feed_id,guid) DO UPDATE SET title=excluded.title, link=excluded.link, summary=excluded.summary, published_at=excluded.published_at');
+    const transaction = this.d.transaction(() => entries.slice(0, 300).forEach((entry) => insert.run(id(), feedId, entry.guid, entry.title || '未命名条目', entry.link || '', entry.summary || '', entry.publishedAt, now()))); transaction();
+  }
+  listRssEntries(input: { search?: string; feedId?: string; unreadOnly?: boolean; starredOnly?: boolean } = {}): RssEntry[] {
+    const where: string[] = []; const values: unknown[] = []; if (input.feedId) { where.push('rss_entries.feed_id=?'); values.push(input.feedId); } if (input.unreadOnly) where.push('rss_entries.read=0'); if (input.starredOnly) where.push('rss_entries.starred=1'); if (input.search?.trim()) { where.push('(rss_entries.title LIKE ? OR rss_entries.summary LIKE ?)'); values.push(`%${input.search.trim()}%`, `%${input.search.trim()}%`); }
+    return this.d.prepare(`SELECT rss_entries.*, rss_feeds.title AS feed_title FROM rss_entries JOIN rss_feeds ON rss_feeds.id=rss_entries.feed_id ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY rss_entries.starred DESC, COALESCE(rss_entries.published_at, rss_entries.created_at) DESC LIMIT 500`).all(...values).map((row: any) => this.rssEntry(row));
+  }
+  markRssEntryRead(entryId: string, read: boolean) { this.d.prepare('UPDATE rss_entries SET read=? WHERE id=?').run(read ? 1 : 0, entryId); }
+  toggleRssEntryStar(entryId: string) { this.d.prepare('UPDATE rss_entries SET starred=CASE starred WHEN 1 THEN 0 ELSE 1 END WHERE id=?').run(entryId); }
+  setting<T>(key: string, fallback: T): T { try { return JSON.parse(this.d.prepare('SELECT value FROM settings WHERE key=?').get(key)?.value || '') as T; } catch { return fallback; } }
+  saveSetting<T>(key: string, value: T) { this.d.prepare('INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key, JSON.stringify(value)); return value; }
 
   activeFocus(): FocusSession | null { const row = this.d.prepare('SELECT pomodoro_sessions.*, tasks.title AS task_title FROM pomodoro_sessions LEFT JOIN tasks ON tasks.id=pomodoro_sessions.task_id WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1').get(); return row ? this.focus(row) : null; }
   private focus(row: any): FocusSession { return { id: row.id, taskId: row.task_id, taskTitle: row.task_title, kind: row.kind, plannedSeconds: row.planned_seconds, startedAt: row.started_at, pausedAt: row.paused_at, pausedSeconds: row.paused_seconds, endedAt: row.ended_at, abandoned: Boolean(row.abandoned) }; }
