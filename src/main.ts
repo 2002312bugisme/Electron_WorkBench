@@ -1,6 +1,6 @@
-import { app, BrowserWindow, globalShortcut, Menu, nativeImage, net, Notification, powerMonitor, protocol, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, Menu, nativeImage, net, Notification, powerMonitor, protocol, shell, Tray } from 'electron';
 import { spawn } from 'node:child_process';
-import { rmSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { WorkbenchServices } from './main/services';
@@ -10,6 +10,15 @@ import type { Task } from './shared/types';
 app.setName('Zzz Workstation');
 app.setPath('userData', path.join(app.getPath('appData'), 'Zzz Workstation'));
 
+const uninstallShortcut = () => path.join(app.getPath('desktop'), '卸载 Zzz 的工作站.lnk');
+function createUninstallShortcut(updateExe: string, iconExe: string) {
+  if (!existsSync(updateExe)) return;
+  const value = (raw: string) => Buffer.from(raw, 'utf8').toString('base64');
+  const script = `$w=New-Object -ComObject WScript.Shell;$s=$w.CreateShortcut([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${value(uninstallShortcut())}')));$s.TargetPath=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${value(updateExe)}'));$s.Arguments='--uninstall';$s.WorkingDirectory=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${value(path.dirname(updateExe))}'));$s.IconLocation=([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${value(iconExe)}'))+',0');$s.Description='卸载 Zzz 的工作站，并删除本机工作站数据';$s.Save()`;
+  const powershell = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  try { spawn(powershell, ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-Command', script], { detached: true, stdio: 'ignore' }).unref(); } catch { void 0; }
+}
+
 function squirrelStartup() {
   const command = process.argv[1];
   if (process.platform !== 'win32' || !command?.startsWith('--squirrel-')) return false;
@@ -17,10 +26,11 @@ function squirrelStartup() {
   const updateExe = path.resolve(path.dirname(process.execPath), '..', 'Update.exe');
   const update = (args: string[]) => { try { spawn(updateExe, args, { detached: true }).on('close', () => app.quit()); } catch { app.quit(); } };
   if (command === '--squirrel-uninstall') {
-    rmSync(path.join(app.getPath('appData'), 'Zzz Workstation'), { recursive: true, force: true, maxRetries: 3 });
+    rmSync(path.join(app.getPath('appData'), 'Zzz Workstation'), { recursive: true, force: true, maxRetries: 3 }); rmSync(uninstallShortcut(), { force: true, maxRetries: 1 });
+    dialog.showMessageBoxSync({ type: 'info', title: 'Zzz 的工作站已卸载', message: '已删除本机工作站数据。', detail: '数据库、附件、缓存、设置和本机受保护凭据均已清除。你手动导出到其他位置的备份不会被删除。', buttons: ['完成'] });
     update([`--removeShortcut=${target}`]); return true;
   }
-  if (command === '--squirrel-install' || command === '--squirrel-updated') { update([`--createShortcut=${target}`]); return true; }
+  if (command === '--squirrel-install' || command === '--squirrel-updated') { createUninstallShortcut(updateExe, process.execPath); update([`--createShortcut=${target}`]); return true; }
   if (command === '--squirrel-obsolete') { app.quit(); return true; }
   return false;
 }

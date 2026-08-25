@@ -21,7 +21,7 @@ Windows 本地优先、离线可用的个人工作台。任务、Markdown 笔记
 
 1. 在 GitHub Releases 下载最新的 `Zzz Workstation-x.y.z Setup.exe`。
 2. 退出托盘中的旧版本，再运行安装程序。
-3. 覆盖升级会保留既有工作站数据；卸载时会删除应用数据目录。
+3. 覆盖升级会保留既有工作站数据。桌面会同时提供“Zzz 的工作站”和“卸载 Zzz 的工作站”快捷方式；也可通过 Windows 设置的“已安装的应用”卸载。
 
 首次打开时需要设置主密码。主密码不会保存到磁盘，也无法找回；请自行保管并定期导出备份。
 
@@ -37,6 +37,7 @@ Windows 本地优先、离线可用的个人工作台。任务、Markdown 笔记
 - 数据库、附件和设置位于 `%APPDATA%\Zzz Workstation`，业务数据使用 SQLCipher 兼容加密。
 - 锁定应用或 Windows 锁屏后，数据库连接会关闭。
 - 手动导出到其他位置的备份不会随卸载删除；忘记主密码后，应用数据和备份均无法恢复。
+- 卸载会删除 `%APPDATA%\Zzz Workstation` 内的数据库、附件、缓存、设置和本机受保护凭据，并显示完成提示。
 - 外部整合默认关闭。未配置 RSS、邮箱或 OSS 时，所有一期、二期本地功能仍可断网使用。
 - 邮箱 SMTP 授权码和 OSS AccessKey 通过 Windows DPAPI 受保护保存，不进入数据库、日志、导出备份或 Git。
 - OSS 只能配置私有 Bucket 的 `zzz-workstation/` 前缀；务必使用最小权限 RAM 用户，禁止使用主账号或 `AliyunOSSFullAccess`。
