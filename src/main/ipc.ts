@@ -1,10 +1,11 @@
-import { BrowserWindow, Notification, clipboard, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, Notification, clipboard, dialog, ipcMain, shell } from 'electron';
 import type { CreateNoteInput, CreatePromptInput, CreateTaskInput, TaskStatus } from '../shared/types';
 import { WorkbenchServices } from './services';
 import { createDatabaseKey, hasEnvelope, unwrapDatabaseKey } from './security';
 
 export function registerIpc(services: WorkbenchServices, emit: (channel: 'locked' | 'focus-changed' | 'navigate', value?: string) => void) {
   const requireOpen = () => { if (!services.database.open) throw new Error('工作站已锁定。'); };
+  ipcMain.handle('app:info', () => ({ name: app.getName(), version: app.getVersion(), dataDirectory: services.root }));
   ipcMain.handle('auth:state', () => ({ configured: hasEnvelope(services.root), unlocked: services.database.open }));
   ipcMain.handle('auth:setup', (_, password: string) => { if (hasEnvelope(services.root)) throw new Error('工作站已经初始化。'); const key = createDatabaseKey(services.root, password); services.database.openWithKey(key); void services.rescanFiles().catch((): void => {}); });
   ipcMain.handle('auth:unlock', (_, password: string) => { const key = unwrapDatabaseKey(services.root, password); services.database.openWithKey(key); void services.rescanFiles().catch((): void => {}); });

@@ -37,11 +37,13 @@ export interface FileRoot { id: string; path: string; name: string; enabled: boo
 export interface IndexedFile { id: string; rootId: string; path: string; name: string; extension: string; size: number; modifiedAt: string }
 export interface CalendarData { tasks: Task[]; habits: Habit[]; habitDays: HabitDay[] }
 export interface SetupState { configured: boolean; unlocked: boolean }
+export interface AppInfo { name: string; version: string; dataDirectory: string }
 export interface CreateTaskInput { title: string; description?: string; status?: TaskStatus; priority?: TaskPriority; projectId?: string | null; tagIds?: string[]; dueAt?: string | null; reminderAt?: string | null; repeatRule?: RepeatRule; gtdStage?: GtdStage; important?: boolean; urgent?: boolean }
 export interface CreateNoteInput { title: string; content?: string; projectId?: string | null; tagIds?: string[] }
 export interface CreatePromptInput { title: string; body: string; categoryId?: string | null; tagIds?: string[]; favorite?: boolean }
 
 export interface WorkbenchApi {
+  app: { info(): Promise<AppInfo> };
   auth: { state(): Promise<SetupState>; setup(password: string): Promise<void>; unlock(password: string): Promise<void>; lock(): Promise<void> };
   tasks: { list(search?: string): Promise<Task[]>; save(input: CreateTaskInput & { id?: string }): Promise<Task>; remove(id: string): Promise<void>; complete(id: string): Promise<Task>; move(id: string, status: TaskStatus): Promise<Task> };
   projects: { list(): Promise<Project[]>; save(input: Omit<Project, 'id' | 'createdAt'> & { id?: string }): Promise<Project>; remove(id: string): Promise<void> };

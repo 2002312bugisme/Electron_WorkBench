@@ -3,6 +3,7 @@ import type { WorkbenchApi } from './shared/types';
 
 const listen = (channel: string, listener: (...args: any[]) => void) => { const wrapped = (_: unknown, ...args: any[]) => listener(...args); ipcRenderer.on(channel, wrapped); return () => ipcRenderer.removeListener(channel, wrapped); };
 const api: WorkbenchApi = {
+  app: { info: () => ipcRenderer.invoke('app:info') },
   auth: { state: () => ipcRenderer.invoke('auth:state'), setup: (password) => ipcRenderer.invoke('auth:setup', password), unlock: (password) => ipcRenderer.invoke('auth:unlock', password), lock: () => ipcRenderer.invoke('auth:lock') },
   tasks: { list: (search) => ipcRenderer.invoke('tasks:list', search), save: (input) => ipcRenderer.invoke('tasks:save', input), remove: (id) => ipcRenderer.invoke('tasks:remove', id), complete: (id) => ipcRenderer.invoke('tasks:complete', id), move: (id, status) => ipcRenderer.invoke('tasks:move', id, status) },
   projects: { list: () => ipcRenderer.invoke('projects:list'), save: (input) => ipcRenderer.invoke('projects:save', input), remove: (id) => ipcRenderer.invoke('projects:remove', id) },

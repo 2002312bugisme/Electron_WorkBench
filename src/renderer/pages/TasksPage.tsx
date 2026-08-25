@@ -17,19 +17,19 @@ export function TasksPage() {
   useEffect(() => { if (params.get('new') === '1') { setEditing({} as Task); setParams({}, { replace: true }); } }, [params, setParams]);
   const complete = async (task: Task) => { await window.workbench.tasks.complete(task.id); await refresh(); };
   return <div className="page tasks-page"><div className="page-tools"><input className="search" placeholder="搜索任务…" value={search} onChange={(event) => setSearch(event.target.value)} /><div className="segmented"><button className={view === 'list' ? 'selected' : ''} onClick={() => setView('list')}>列表</button><button className={view === 'gtd' ? 'selected' : ''} onClick={() => setView('gtd')}>GTD</button><button className={view === 'quadrant' ? 'selected' : ''} onClick={() => setView('quadrant')}>四象限</button></div><button className="primary" onClick={() => setEditing({} as Task)}>＋ 新建任务</button></div>
-    {view === 'list' && <TaskList tasks={tasks} onEdit={setEditing} onComplete={complete} />}
+    {view === 'list' && <TaskList tasks={tasks} onEdit={setEditing} onComplete={complete} onRemove={async (task) => { if (window.confirm(`删除任务“${task.title}”？此操作无法恢复。`)) { await window.workbench.tasks.remove(task.id); await refresh(); } }} />}
     {view === 'gtd' && <GtdBoard tasks={tasks} edit={setEditing} />}
     {view === 'quadrant' && <Quadrants tasks={tasks} edit={setEditing} />}
     {editing && <TaskDialog task={editing.id ? editing : null} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await refresh(); }} />}
   </div>;
 }
 
-export function TaskList({ tasks, onEdit, onComplete }: { tasks: Task[]; onEdit: (task: Task) => void; onComplete: (task: Task) => void }) {
-  return <div className="task-list">{tasks.length ? tasks.map((task) => <TaskRow key={task.id} task={task} onEdit={onEdit} onComplete={onComplete} />) : <EmptyState text="还没有任务。先把脑中的一件事放进收集箱。" />}</div>;
+export function TaskList({ tasks, onEdit, onComplete, onRemove }: { tasks: Task[]; onEdit: (task: Task) => void; onComplete: (task: Task) => void; onRemove?: (task: Task) => void }) {
+  return <div className="task-list">{tasks.length ? tasks.map((task) => <TaskRow key={task.id} task={task} onEdit={onEdit} onComplete={onComplete} onRemove={onRemove} />) : <EmptyState text="还没有任务。先把脑中的一件事放进收集箱。" />}</div>;
 }
 
-function TaskRow({ task, onEdit, onComplete }: { task: Task; onEdit: (task: Task) => void; onComplete: (task: Task) => void }) {
-  return <article className={`task-row ${task.status === 'done' ? 'is-done' : ''}`}><button className="check" onClick={() => task.status === 'done' ? onEdit(task) : onComplete(task)}>{task.status === 'done' ? '✓' : ''}</button><button className="task-main" onClick={() => onEdit(task)}><strong>{task.title}</strong><span>{stages[task.gtdStage]} · {task.projectName || '个人'} · {task.dueAt ? shortDate(task.dueAt) : '无截止日期'}</span></button><span className={`priority ${task.priority}`}>{priorities[task.priority]}</span></article>;
+function TaskRow({ task, onEdit, onComplete, onRemove }: { task: Task; onEdit: (task: Task) => void; onComplete: (task: Task) => void; onRemove?: (task: Task) => void }) {
+  return <article className={`task-row ${task.status === 'done' ? 'is-done' : ''}`}><button className="check" onClick={() => task.status === 'done' ? onEdit(task) : onComplete(task)}>{task.status === 'done' ? '✓' : ''}</button><button className="task-main" onClick={() => onEdit(task)}><strong>{task.title}</strong><span>{stages[task.gtdStage]} · {task.projectName || '个人'} · {task.dueAt ? shortDate(task.dueAt) : '无截止日期'}</span></button><span className={`priority ${task.priority}`}>{priorities[task.priority]}</span>{onRemove && <button className="task-delete" type="button" aria-label={`删除 ${task.title}`} onClick={() => onRemove(task)}>×</button>}</article>;
 }
 
 function GtdBoard({ tasks, edit }: { tasks: Task[]; edit: (task: Task) => void }) {
